@@ -1,0 +1,9 @@
+node_modules
+.git
+
+/lib/
+
+/coverage
+
+*.json
+*.js
