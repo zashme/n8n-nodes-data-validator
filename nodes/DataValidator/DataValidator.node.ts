@@ -51,7 +51,6 @@ export class DataValidator implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		let item: INodeExecutionData;
-		const returnData: INodeExecutionData[] = [];
 
 		const jsonSchemaString = this.getNodeParameter("jsonSchema", 0);
 
@@ -76,25 +75,34 @@ export class DataValidator implements INodeType {
 			throw new NodeOperationError(this.getNode(), "Invalid JSON Schema");
 		}
 
-		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
-			item = items[itemIndex]!;
+		item = items[0]!;
 
-			const newItemBinary = item.binary;
-			const newItemJson = item.json;
+		const newItemBinary = item.binary;
+		const newItemJson = item.json.body;
 
-			const valid = validate(item.json);
+		const valid = validate(item.json.body);
 
-			if (!valid) {
-				if (validate.errors) {
-					throw new NodeOperationError(this.getNode(), 'Invalid JSON data sdf sdf ')
-				}
+		if (!valid) {
+			if (validate.errors) {
+				// Return validation errors in the response instead of throwing
+				return this.prepareOutputData(
+					[{
+						json: {
+							success: false,
+							validationErrors: validate.errors,
+							data: newItemJson,
+						},
+						binary: newItemBinary,
+					}]);
 			}
-			returnData.push({
-				json: newItemJson,
-				binary: newItemBinary,
-			});
 		}
 
-		return this.prepareOutputData(returnData);
+		return this.prepareOutputData([{
+			json: {
+				success: true,
+				data: newItemJson
+			},
+			binary: newItemBinary,
+		}]);
 	}
 }
