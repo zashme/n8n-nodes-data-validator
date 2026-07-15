@@ -23,10 +23,10 @@
   "engines": {
     "node": ">=18.10"
   },
-  "main": "index.js",
+  "main": "dist/nodes/DataValidator/DataValidator.node.js",
   "scripts": {
     "deploy": "tsc && gulp build:icons && npm link && cd ~/.n8n/custom && npm link n8n-nodes-data-validator",
-    "build": "npx rimraf dist && tsc && gulp build:icons",
+    "build": "rimraf dist && tsc && gulp build:icons",
     "dev": "tsc --watch",
     "format": "prettier nodes --write",
     "lint": "eslint nodes package.json",
@@ -58,6 +58,7 @@
     "eslint-plugin-n8n-nodes-base": "^1.16.1",
     "gulp": "^4.0.2",
     "prettier": "^3.3.2",
+    "rimraf": "^5.0.10",
     "typescript": "^5.5.3"
   }
 }

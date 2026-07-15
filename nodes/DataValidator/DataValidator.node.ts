@@ -1,11 +1,13 @@
 import {
+	GenericValue,
 	IDataObject,
 	IExecuteFunctions,
+	INode,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeConnectionType,
 	NodeOperationError,
+	jsonParse,
 } from 'n8n-workflow';
 import Ajv from 'ajv';
 import type { Schema, ValidateFunction } from 'ajv';
@@ -32,6 +34,35 @@ function getByPath(source: IDataObject, path: string): unknown {
 		);
 }
 
+function compileSchema(node: INode, ajv: Ajv, rawSchema: unknown): ValidateFunction {
+	let schema: Schema;
+
+	if (typeof rawSchema === 'string') {
+		schema = jsonParse<Schema>(rawSchema, { errorMessage: 'The JSON Schema is not valid JSON' });
+	} else if (rawSchema !== null && typeof rawSchema === 'object') {
+		schema = rawSchema as Schema;
+	} else {
+		throw new NodeOperationError(node, 'The JSON Schema must be a JSON string or object');
+	}
+
+	let validate: ValidateFunction;
+
+	try {
+		validate = ajv.compile(schema);
+	} catch (error) {
+		throw new NodeOperationError(
+			node,
+			`The JSON Schema could not be compiled: ${(error as Error).message}`,
+		);
+	}
+
+	if ('$async' in validate && validate.$async) {
+		throw new NodeOperationError(node, 'Async JSON Schemas ($async) are not supported');
+	}
+
+	return validate;
+}
+
 export class DataValidator implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Data Validator',
@@ -43,8 +74,8 @@ export class DataValidator implements INodeType {
 		defaults: {
 			name: 'Data Validator',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		inputs: ['main'],
+		outputs: ['main'],
 		properties: [
 			{
 				displayName: 'JSON Schema',
@@ -73,54 +104,58 @@ export class DataValidator implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		const jsonSchemaString = this.getNodeParameter('jsonSchema', 0);
-
-		if (typeof jsonSchemaString !== 'string') {
-			throw new NodeOperationError(this.getNode(), 'The JSON Schema must be a string');
-		}
-
-		let jsonSchema: Schema;
-
-		try {
-			jsonSchema = JSON.parse(jsonSchemaString) as Schema;
-		} catch (error) {
-			throw new NodeOperationError(
-				this.getNode(),
-				`The JSON Schema is not valid JSON: ${(error as Error).message}`,
-			);
-		}
-
-		const ajv = new Ajv({ allErrors: true, strict: false });
+		const ajv = new Ajv({ allErrors: true });
 		addFormats(ajv);
 		ajvErrors(ajv);
 
-		let validate: ValidateFunction;
-
-		try {
-			validate = ajv.compile(jsonSchema);
-		} catch (error) {
-			throw new NodeOperationError(
-				this.getNode(),
-				`The JSON Schema could not be compiled: ${(error as Error).message}`,
-			);
-		}
+		// Parameters may hold expressions that resolve differently per item, so both
+		// are read per item; caching keeps the common static schema compiled once.
+		const validators = new Map<string, ValidateFunction>();
 
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			const item = items[itemIndex];
 
 			try {
+				const rawSchema = this.getNodeParameter('jsonSchema', itemIndex);
+				const schemaKey = typeof rawSchema === 'string' ? rawSchema : JSON.stringify(rawSchema);
+
+				let validate = validators.get(schemaKey);
+				if (validate === undefined) {
+					validate = compileSchema(this.getNode(), ajv, rawSchema);
+					validators.set(schemaKey, validate);
+				}
+
 				const propertyPath = this.getNodeParameter('propertyPath', itemIndex, '') as string;
 				const dataToValidate =
 					propertyPath === '' ? item.json : getByPath(item.json, propertyPath);
 
+				if (propertyPath !== '' && dataToValidate === undefined) {
+					returnData.push({
+						json: {
+							success: false,
+							validationErrors: [
+								{
+									keyword: 'propertyPath',
+									message: `Property "${propertyPath}" not found on item`,
+									params: { propertyPath },
+								},
+							],
+							data: null,
+						},
+						binary: item.binary,
+						pairedItem: { item: itemIndex },
+					});
+					continue;
+				}
+
 				const valid = validate(dataToValidate);
 				const json: IDataObject = {
 					success: valid,
-					data: dataToValidate as IDataObject,
+					data: (dataToValidate ?? null) as GenericValue,
 				};
 
 				if (!valid) {
-					json.validationErrors = (validate.errors ?? []) as unknown as IDataObject[];
+					json.validationErrors = validate.errors as unknown as IDataObject[];
 				}
 
 				returnData.push({
@@ -132,6 +167,7 @@ export class DataValidator implements INodeType {
 				if (this.continueOnFail()) {
 					returnData.push({
 						json: { error: (error as Error).message },
+						binary: item.binary,
 						pairedItem: { item: itemIndex },
 					});
 					continue;
