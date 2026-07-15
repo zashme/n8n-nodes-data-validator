@@ -1,12 +1,17 @@
 {
   "name": "n8n-nodes-data-validator",
-  "version": "1.0.2",
-  "description": "Data validation node",
+  "version": "1.1.0",
+  "description": "n8n community node to validate input data against a JSON Schema (ajv)",
   "keywords": [
-    "n8n-community-node-package"
+    "n8n-community-node-package",
+    "n8n",
+    "validation",
+    "json-schema",
+    "ajv",
+    "data-validation"
   ],
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://github.com/zashme/n8n-nodes-data-validator",
   "author": {
     "name": "Alexandru Fiodorov",
     "email": "zashme@gmail.com"
@@ -18,16 +23,15 @@
   "engines": {
     "node": ">=18.10"
   },
-
   "main": "index.js",
   "scripts": {
     "deploy": "tsc && gulp build:icons && npm link && cd ~/.n8n/custom && npm link n8n-nodes-data-validator",
     "build": "npx rimraf dist && tsc && gulp build:icons",
     "dev": "tsc --watch",
-    "format": "prettier nodes credentials --write",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
-    "prepublishOnly": "npm build && npm lint -c .eslintrc.prepublish.js nodes credentials package.json"
+    "format": "prettier nodes --write",
+    "lint": "eslint nodes package.json",
+    "lintfix": "eslint nodes package.json --fix",
+    "prepublishOnly": "npm run build && eslint -c .eslintrc.prepublish.js nodes package.json"
   },
   "files": [
     "dist"
@@ -36,7 +40,7 @@
     "n8nNodesApiVersion": 1,
     "credentials": [],
     "nodes": [
-      "dist/nodes/DataValidation/DataValidator.node.js"
+      "dist/nodes/DataValidator/DataValidator.node.js"
     ]
   },
   "peerDependencies": {
@@ -44,7 +48,8 @@
   },
   "dependencies": {
     "ajv": "^8.17.0",
-    "ajv-errors": "^3.0.0"
+    "ajv-errors": "^3.0.0",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
     "@types/normalize-package-data": "^2.4.4",
