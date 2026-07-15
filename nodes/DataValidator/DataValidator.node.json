@@ -1,19 +1,12 @@
 {
-	"node": "n8n-nodes-base.DataValidator",
+	"node": "n8n-nodes-data-validator.dataValidator",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": [
-		"Miscellaneous"
-	],
+	"categories": ["Data & Storage", "Utility"],
 	"resources": {
-		"credentialDocumentation": [
-			{
-				"url": ""
-			}
-		],
 		"primaryDocumentation": [
 			{
-				"url": ""
+				"url": "https://github.com/zashme/n8n-nodes-data-validator#readme"
 			}
 		]
 	}
