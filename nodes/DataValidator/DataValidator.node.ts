@@ -6,6 +6,7 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	NodeConnectionTypes,
 	NodeOperationError,
 	jsonParse,
 } from 'n8n-workflow';
@@ -34,7 +35,12 @@ function getByPath(source: IDataObject, path: string): unknown {
 		);
 }
 
-function compileSchema(node: INode, ajv: Ajv, rawSchema: unknown): ValidateFunction {
+function compileSchema(
+	node: INode,
+	ajv: Ajv,
+	rawSchema: unknown,
+	itemIndex: number,
+): ValidateFunction {
 	let schema: Schema;
 
 	if (typeof rawSchema === 'string') {
@@ -42,7 +48,9 @@ function compileSchema(node: INode, ajv: Ajv, rawSchema: unknown): ValidateFunct
 	} else if (rawSchema !== null && typeof rawSchema === 'object') {
 		schema = rawSchema as Schema;
 	} else {
-		throw new NodeOperationError(node, 'The JSON Schema must be a JSON string or object');
+		throw new NodeOperationError(node, 'The JSON Schema must be a JSON string or object', {
+			itemIndex,
+		});
 	}
 
 	let validate: ValidateFunction;
@@ -53,11 +61,14 @@ function compileSchema(node: INode, ajv: Ajv, rawSchema: unknown): ValidateFunct
 		throw new NodeOperationError(
 			node,
 			`The JSON Schema could not be compiled: ${(error as Error).message}`,
+			{ itemIndex },
 		);
 	}
 
 	if ('$async' in validate && validate.$async) {
-		throw new NodeOperationError(node, 'Async JSON Schemas ($async) are not supported');
+		throw new NodeOperationError(node, 'Async JSON Schemas ($async) are not supported', {
+			itemIndex,
+		});
 	}
 
 	return validate;
@@ -70,12 +81,15 @@ export class DataValidator implements INodeType {
 		icon: 'file:analysis.svg',
 		group: ['transform'],
 		version: 1,
+		subtitle:
+			'={{$parameter["propertyPath"] ? "Validate: " + $parameter["propertyPath"] : "Validate item"}}',
 		description: 'Validate input data before continuing the workflow',
 		defaults: {
 			name: 'Data Validator',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		usableAsTool: true,
+		inputs: [NodeConnectionTypes.Main],
+		outputs: [NodeConnectionTypes.Main],
 		properties: [
 			{
 				displayName: 'JSON Schema',
@@ -121,7 +135,7 @@ export class DataValidator implements INodeType {
 
 				let validate = validators.get(schemaKey);
 				if (validate === undefined) {
-					validate = compileSchema(this.getNode(), ajv, rawSchema);
+					validate = compileSchema(this.getNode(), ajv, rawSchema, itemIndex);
 					validators.set(schemaKey, validate);
 				}
 
@@ -173,7 +187,7 @@ export class DataValidator implements INodeType {
 					continue;
 				}
 
-				throw error;
+				throw new NodeOperationError(this.getNode(), error as Error, { itemIndex });
 			}
 		}
 
