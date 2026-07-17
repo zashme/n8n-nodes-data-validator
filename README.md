@@ -1,16 +1,13 @@
 # n8n-nodes-data-validator
 
-This is an n8n community node. It lets you use _app/service name_ in your n8n workflows.
+This is an [n8n](https://n8n.io/) community node that validates input data against a [JSON Schema](https://json-schema.org/), powered by [Ajv](https://ajv.js.org/).
 
-_App/service name_ is _one or two sentences describing the service this node integrates with_.
-
-[n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) workflow automation platform.
+Use it to guard your workflows against malformed data — for example, validating incoming webhook payloads before passing them on to downstream services.
 
 [Installation](#installation)
 [Operations](#operations)
-[Credentials](#credentials)
-[Compatibility](#compatibility)
 [Usage](#usage)
+[Compatibility](#compatibility)
 [Resources](#resources)
 [Version history](#version-history)
 
@@ -18,29 +15,75 @@ _App/service name_ is _one or two sentences describing the service this node int
 
 Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
 
+For self-hosted n8n: **Settings → Community Nodes → Install**, then enter `n8n-nodes-data-validator`.
+
 ## Operations
 
-_List the operations supported by your node._
+The node validates every incoming item against the JSON Schema you provide and outputs one item per input item:
 
-## Credentials
+- **Valid item** → `{ "success": true, "data": <validated data> }`
+- **Invalid item** → `{ "success": false, "validationErrors": [...], "data": <validated data> }`
 
-_If users need to authenticate with the app/service, provide details here. You should include prerequisites (such as signing up with the service), available authentication methods, and how to set them up._
+Validation failures do **not** stop the workflow — route on the `success` flag (e.g. with an IF node) to decide how to handle invalid data. Binary data is passed through untouched.
 
-## Compatibility
+If **Property to Validate** points to a property that does not exist on an item, the item is output as `success: false` with a single `validationErrors` entry whose `keyword` is `propertyPath` (and `data: null`), so a typo'd path is distinguishable from genuinely invalid data.
 
-_State the minimum n8n version, as well as which versions you test against. You can also include any known version incompatibility issues._
+### Node parameters
+
+| Parameter | Description |
+|---|---|
+| **JSON Schema** | The [JSON Schema](https://json-schema.org/) each item is validated against. |
+| **Property to Validate** | Dot-notation path of the item property to validate, e.g. `body` for webhook payloads. Leave empty to validate the entire item JSON. |
+
+### Supported schema features
+
+- All standard JSON Schema keywords supported by [Ajv](https://ajv.js.org/json-schema.html) (draft-07 by default)
+- Format validation via [ajv-formats](https://ajv.js.org/packages/ajv-formats.html): `email`, `uri`, `date-time`, `uuid`, `ipv4`, and more
+- Custom error messages via [ajv-errors](https://ajv.js.org/packages/ajv-errors.html) using the `errorMessage` keyword
+- Schemas are compiled in Ajv [strict mode](https://ajv.js.org/strict-mode.html): misspelled or unknown keywords are reported as errors instead of being silently ignored
+- Both parameters support n8n expressions and may resolve to different values per item; identical schemas are compiled only once per execution
+- Async schemas (`$async: true`) are not supported and are rejected with a clear error
 
 ## Usage
 
-_This is an optional section. Use it to help users with any difficult or confusing aspects of the node._
+Example: validate a webhook payload. Set **Property to Validate** to `body` and use a schema like:
 
-_By the time users are looking for community nodes, they probably already know n8n basics. But if you expect new users, you can link to the [Try it out](https://docs.n8n.io/try-it-out/) documentation to help them get started._
+```json
+{
+	"type": "object",
+	"properties": {
+		"email": { "type": "string", "format": "email" },
+		"age": { "type": "integer", "minimum": 0 }
+	},
+	"required": ["email"],
+	"additionalProperties": false,
+	"errorMessage": {
+		"required": { "email": "The email field is required" }
+	}
+}
+```
+
+Then branch on `{{ $json.success }}` with an IF node: `true` continues the happy path, `false` goes to your error handling (reply with a 400, send an alert, etc.). The details of each failure are available in `{{ $json.validationErrors }}`.
+
+## Compatibility
+
+Requires n8n version 1.0 or above (Node.js >= 18.10).
 
 ## Resources
 
-* [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
-* _Link to app/service documentation._
+- [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
+- [Ajv documentation](https://ajv.js.org/)
+- [JSON Schema documentation](https://json-schema.org/)
 
 ## Version history
 
-_This is another optional section. If your node has multiple versions, include a short description of available versions and what changed, as well as any compatibility impact._
+- **1.1.0** — Validate all incoming items (previously only the first); new **Property to Validate** parameter (previously hardcoded to `body`); added `ajv-formats` (format validation) and enabled `ajv-errors` (custom error messages); strict-mode schema compilation; explicit error when the configured property path is missing; fixed the package so the node loads correctly when installed from npm.
+- **1.0.x** — Initial release.
+
+### Upgrading from 1.0.x
+
+Version 1.0.x always validated `item.json.body`. Since 1.1.0 the node validates the **entire item JSON** by default. If your workflow validated webhook payloads, set **Property to Validate** to `body` to keep the old behavior.
+
+## License
+
+[MIT](LICENSE)
